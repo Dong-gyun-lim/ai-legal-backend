@@ -1,0 +1,20 @@
+# Java / Gradle / IntelliJ
+/build/
+.gradle/
+out/
+*.iml
+/.idea/
+!**/src/main/**/application*.yml
+**/application-*.local.yml
+
+# Logs
+*.log
+logs/
+target/
+
+# OS
+.DS_Store
+
+# Python venv (혹시 섞여 있을 경우)
+.venv/
+venv/

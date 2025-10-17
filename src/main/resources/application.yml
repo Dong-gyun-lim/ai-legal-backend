@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: divorce-ai
+  profiles:
+    active: dev
+
+  flyway:
+    # 공통 경로/옵션만 두고, 켜고 끄는 건 각 프로필에서
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    enabled: false   # 기본은 꺼두고, prod 등에서 켜기
+
+server:
+  port: 9090
+
+springdoc:
+  swagger-ui:
+    path: /swagger
+
+# MyBatis 공통 설정
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.divorceai.domain
+  configuration:
+    map-underscore-to-camel-case: true

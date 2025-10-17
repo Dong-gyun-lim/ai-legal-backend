@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.divorceai.mapper.RequestMapper">
+
+  <resultMap id="RequestResult" type="com.divorceai.domain.Request">
+    <id property="id" column="id"/>
+    <result property="caseType" column="case_type"/>
+    <result property="gender" column="gender"/>
+    <result property="ageRange" column="age_range"/>
+    <result property="marriageYears" column="marriage_years"/>
+    <result property="childCount" column="child_count"/>
+    <result property="reason" column="reason"/>
+    <result property="claimDamages" column="claim_damages"/>
+    <result property="claimCustody" column="claim_custody"/>
+    <result property="claimProperty" column="claim_property"/>
+    <result property="freeText" column="free_text"/>
+    <result property="createdAt" column="created_at"/>
+  </resultMap>
+
+  <insert id="insertRequest" useGeneratedKeys="true" keyProperty="id">
+    INSERT INTO requests (
+      case_type, gender, age_range, marriage_years, child_count, reason,
+      claim_damages, claim_custody, claim_property, free_text
+    )
+    VALUES (
+      #{caseType}, #{gender}, #{ageRange}, #{marriageYears}, #{childCount}, #{reason},
+      #{claimDamages}, #{claimCustody}, #{claimProperty}, #{freeText}
+    )
+  </insert>
+
+  <select id="findAll" resultMap="RequestResult">
+    SELECT * FROM requests ORDER BY created_at DESC
+  </select>
+
+  <select id="findById" resultMap="RequestResult">
+    SELECT * FROM requests WHERE id = #{id}
+  </select>
+
+</mapper>

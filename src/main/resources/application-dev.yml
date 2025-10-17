@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    driver-class-name: org.mariadb.jdbc.Driver
+    url: jdbc:mariadb://203.231.146.220:3306/kiu202507?useSSL=false&useUnicode=true&characterEncoding=utf8
+    username: kiu202507
+    password: kiu20250712#
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      pool-name: Hikari-DivorceAI
+
+  flyway:
+    enabled: false            # <-- 여기! (기존 flyway.enabled 아님)
+
+logging:
+  level:
+    com.divorceai: INFO
