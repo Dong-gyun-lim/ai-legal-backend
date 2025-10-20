@@ -23,3 +23,7 @@ mybatis:
   type-aliases-package: com.divorceai.domain
   configuration:
     map-underscore-to-camel-case: true
+
+flask:
+  base-url: http://127.0.0.1:5001
+  timeout-ms: 5000

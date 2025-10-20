@@ -1,17 +1,25 @@
 spring:
   datasource:
     driver-class-name: org.mariadb.jdbc.Driver
-    url: jdbc:mariadb://203.231.146.220:3306/kiu202507?useSSL=false&useUnicode=true&characterEncoding=utf8
+    url: jdbc:mariadb://203.231.146.220:3306/kiu202507?useSSL=false&useUnicode=true&characterEncoding=utf8&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
     username: kiu202507
-    password: kiu20250712#
+    password: 'kiu20250712#'
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
       pool-name: Hikari-DivorceAI
+      # (선택) 커넥션 오래 살아있을 때 끊김 방지
+      max-lifetime: 1800000        # 30분
+      idle-timeout: 600000         # 10분
+      connection-timeout: 30000    # 30초
 
   flyway:
-    enabled: false            # <-- 여기! (기존 flyway.enabled 아님)
+    enabled: false  # spring.flyway.enabled 형태로 spring 아래에 위치해야 함
 
 logging:
   level:
     com.divorceai: INFO
+
+flask:
+  base-url: http://127.0.0.1:5001
+  timeout-ms: 5000

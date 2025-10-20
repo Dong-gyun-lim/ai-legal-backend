@@ -18,6 +18,8 @@
     <result property="claimProperty" column="claim_property"/>
     <result property="freeText" column="free_text"/>
     <result property="createdAt" column="created_at"/>
+    <result property="summary" column="summary"/>
+    <result property="title" column="title"/>
   </resultMap>
 
   <insert id="insertRequest" useGeneratedKeys="true" keyProperty="id">

@@ -18,4 +18,6 @@ public class Request {
     private Boolean claimProperty;
     private String freeText;
     private LocalDateTime createdAt;
+    private String summary;
+    private String title;
 }
