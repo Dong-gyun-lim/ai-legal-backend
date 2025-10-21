@@ -23,3 +23,10 @@ logging:
 flask:
   base-url: http://127.0.0.1:5001
   timeout-ms: 5000
+
+# application-dev.yml
+crawler:
+  keyword: "이혼"
+  page-size: 20
+  max-pages: 3
+  delay-ms: 400

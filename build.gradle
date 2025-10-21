@@ -51,6 +51,11 @@ dependencies {
 
     // Swagger
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.1'   // JSON 파싱
+    implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:3.0.3'
+    runtimeOnly   'org.mariadb.jdbc:mariadb-java-client:3.3.3'
+
 }
 
 tasks.named('test') {
