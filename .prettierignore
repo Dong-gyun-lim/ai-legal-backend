@@ -1,0 +1,27 @@
+# Build outputs
+build/
+.gradle/
+gradle/
+
+# Dependencies
+node_modules/
+
+# IDE
+.idea/
+.vscode/settings.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Compiled files
+*.class
+*.jar
+*.war
+*.ear
+
+# Generated files
+generated/

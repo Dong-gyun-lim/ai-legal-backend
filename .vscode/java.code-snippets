@@ -1,0 +1,20 @@
+{
+  "Java Class": {
+    "prefix": "class",
+    "body": [
+      "public class ${1:ClassName} {",
+      "    $0",
+      "}"
+    ],
+    "description": "Create a Java class"
+  },
+  "Java Method": {
+    "prefix": "method",
+    "body": [
+      "public ${1:void} ${2:methodName}(${3:parameters}) {",
+      "    $0",
+      "}"
+    ],
+    "description": "Create a Java method"
+  }
+}

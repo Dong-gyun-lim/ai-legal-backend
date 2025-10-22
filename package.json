@@ -1,0 +1,15 @@
+{
+  "name": "divorce-backend",
+  "version": "1.0.0",
+  "description": "Divorce AI Backend",
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

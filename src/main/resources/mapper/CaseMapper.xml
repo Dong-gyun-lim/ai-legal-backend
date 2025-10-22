@@ -1,14 +1,23 @@
-package com.divorceai.mapper;
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
+<mapper namespace="com.divorceai.mapper.CaseMapper">
 
-@Mapper
-public interface CaseMapper {
-    int upsertCase(@Param("caseNo") String caseNo,
-                   @Param("title") String title,
-                   @Param("summary") String summary,
-                   @Param("court") String court,
-                   @Param("judgedAt") String judgedAt, // 간단히 String → 나중에 LocalDate
-                   @Param("url") String url);
-}
+  <insert id="upsertCase">
+    INSERT INTO precedents (
+      case_no, court, judgment_date, type, summary, source_url, full_text
+    )
+    VALUES (
+      #{caseNo}, #{court}, #{judgedAt}, #{type}, #{summary}, #{url}, #{fullText}
+    )
+    ON DUPLICATE KEY UPDATE
+      court         = VALUES(court),
+      judgment_date = VALUES(judgment_date),
+      type          = VALUES(type),
+      summary       = VALUES(summary),
+      source_url    = VALUES(source_url),
+      full_text     = VALUES(full_text);
+  </insert>
+
+</mapper>
