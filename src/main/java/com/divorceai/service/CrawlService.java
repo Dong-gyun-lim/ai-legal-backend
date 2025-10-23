@@ -2,7 +2,13 @@ package com.divorceai.service;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 
+// ✅ Jsoup (중요: java.lang.model.util.Elements 가 아니라 아래 3개!)
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Service;
 
 import com.divorceai.crawl.JudicialCrawler;
@@ -21,114 +27,54 @@ public class CrawlService {
         this.caseMapper = caseMapper;
     }
 
-    /**
-     * 대법원 판례 포털에서 keyword로 검색 → JSON 파싱 → precedents 저장
-     * - summary: clean() (보기용)
-     * - full_text: HTML 원본(목록에 짧으면 상세 API로 보강)
-     */
     public int crawlOnce(String keyword, int page, int pageSize) throws Exception {
         System.out.println("🔎 [Crawl] keyword=" + keyword + ", page=" + page + ", size=" + pageSize);
 
-        String body = crawler.search(keyword, page, pageSize);
-        if (body != null) {
-            System.out.println("🧾 [Crawl Raw Response]\n" + body.substring(0, Math.min(body.length(), 1200)));
+        String body = crawler.fetchListJson(keyword, page, pageSize);
+        if (body != null && !body.isBlank()) {
+            int b = Math.min(900, body.length());
+            System.out.println("🧾 [Crawl Raw Response]\n" + body.substring(0, b));
         }
-
         if (body == null || body.isBlank()) {
-            System.out.println("❌ [Crawl] empty or HTML-like response");
+            System.out.println("❌ [Crawl] list response empty");
             return 0;
         }
 
-        JsonNode root;
-        try {
-            root = om.readTree(body);
-        } catch (Exception e) {
-            System.out.println("❌ [Crawl] JSON parse error: " + e.getMessage());
+        JsonNode root = om.readTree(body);
+        JsonNode items = root.at("/data/dlt_jdcpctRslt");
+        if (items.isMissingNode() || !items.isArray()) {
+            System.out.println("❌ [Crawl] items not found");
             return 0;
         }
 
-        // 실제 리스트 경로
-        String[] candidates = new String[] {
-                "/data/dlt_jdcpctRslt",
-                "/result/list", "/dma_result/list", "/data/list",
-                "/list", "/items", "/result/items", "/content"
-        };
-
-        JsonNode items = null;
-        String hit = null;
-        for (String p : candidates) {
-            JsonNode node = root.at(p);
-            if (!node.isMissingNode() && node.isArray()) {
-                items = node;
-                hit = p;
-                break;
-            }
-        }
-
-        if (items == null) {
-            System.out.println("❌ [Crawl] list not found in JSON");
-            return 0;
-        }
-
-        System.out.println("📦 [Crawl] items path=" + hit + " size=" + items.size());
+        System.out.println("📦 [Crawl] items size=" + items.size());
 
         int saved = 0;
-
         for (JsonNode n : items) {
-            String caseNo = text(n, "csNoLstCtt", "caseNo", "case_no");
-            String court = text(n, "cortNm", "court", "courtName");
-            String dateRaw = text(n, "prnjdgYmd", "judgment_date");
-            String summary = clean(text(n, "jdcpctSumrCtt", "summary", "sumry")); // 보기용
-            String fullText = text(n, "jdcpctXmlCtt"); // 목록에 있는 전문(보통 짧음)
-            String srno = text(n, "jisCntntsSrno"); // 상세 조회 키
-            String url = text(n, "source_url", "url");
-            if (url.isBlank() && !srno.isBlank()) {
-                url = JudicialCrawler.buildViewUrl(srno);
-            }
-
-            // 전문이 짧으면 상세 API로 보강 (보통 수천~수만자)
-            if ((fullText == null || fullText.length() < 2000) && !srno.isBlank()) {
-                try {
-                    String detailJson = crawler.fetchDetail(srno);
-                    if (detailJson != null && !detailJson.isBlank()) {
-                        JsonNode detailRoot = om.readTree(detailJson);
-                        String[] detailPaths = new String[] {
-                                "/data/jdcpctXmlCtt", "/result/jdcpctXmlCtt", "/jdcpctXmlCtt"
-                        };
-                        for (String p : detailPaths) {
-                            JsonNode dn = detailRoot.at(p);
-                            if (!dn.isMissingNode() && !dn.isNull()) {
-                                String v = dn.asText("");
-                                if (!v.isBlank()) {
-                                    fullText = v;
-                                    break;
-                                }
-                            }
-                        }
-                        if (fullText == null || fullText.isBlank()) {
-                            JsonNode dlist = detailRoot.at("/data/dlt_jdcpctRslt");
-                            if (dlist.isArray() && dlist.size() > 0) {
-                                String v = dlist.get(0).path("jdcpctXmlCtt").asText("");
-                                if (!v.isBlank())
-                                    fullText = v;
-                            }
-                        }
-                    }
-                } catch (Exception ex) {
-                    System.out.println("⚠️ [Crawl] detail fetch failed srno=" + srno + " -> " + ex.getMessage());
-                }
-            }
-
+            String caseNo = text(n, "csNoLstCtt");
+            String court = text(n, "cortNm");
+            String dateRaw = text(n, "prnjdgYmd");
+            String summary = clean(text(n, "jdcpctSumrCtt"));
+            String srno = text(n, "jisCntntsSrno"); // 상세페이지 키
+            String inst = text(n, "jisJdcpcInstnDvsCd"); // 기관 코드
+            String type = keyword;
             String judgedAt = normalizeDate(dateRaw);
-            String type = keyword; // 예: "이혼"
 
-            if (caseNo != null && !caseNo.isBlank()) {
-                try {
-                    saved += caseMapper.upsertCase(
-                            caseNo, court, judgedAt, type, summary, url, fullText);
-                } catch (Exception ex) {
-                    System.out.println("⚠️ [Crawl] upsert failed caseNo=" + caseNo + " -> " + ex.getMessage());
-                }
+            String fullText = "";
+            if (!srno.isBlank()) {
+                System.out.printf("🔎 caseNo=%s srno=%s inst=%s | ", caseNo, srno, inst);
+                String detailHtml = crawler.fetchDetailHtml(srno, keyword);
+                fullText = extractMainHtml(detailHtml); // ✅ 상세페이지에서 본문 HTML 캡쳐
+                System.out.println("list.len=" + fullText.length());
+            }
+
+            try {
+                saved += caseMapper.upsertCase(
+                        caseNo, court, judgedAt, type, summary, null /* source_url */,
+                        fullText // ✅ 전문 HTML
+                );
+            } catch (Exception ex) {
+                System.out.println("⚠️ [Crawl] upsert failed caseNo=" + caseNo + " -> " + ex.getMessage());
             }
         }
 
@@ -136,7 +82,47 @@ public class CrawlService {
         return saved;
     }
 
-    // ------------------ helpers ------------------
+    /** 상세 HTML 안에서 본문 영역만 뽑아오기 */
+    private static String extractMainHtml(String html) {
+        if (html == null || html.isBlank())
+            return "";
+        try {
+            Document doc = Jsoup.parse(html);
+
+            // 후보 선택자들 (페이지 구조 변동 대비)
+            List<Element> candidates = new ArrayList<>();
+            candidates.add(doc.selectFirst("div#judgmentNote")); // 판시사항
+            candidates.add(doc.selectFirst("div#judgmentReason")); // 판결요지
+            candidates.add(doc.selectFirst("div#judgmentNote, div#txtview")); // 일반 텍스트 영역
+            candidates.add(doc.selectFirst("div.ctxCntnts, div.cntnts")); // 내부 컨텐츠
+            candidates.add(doc.selectFirst("div#wf_pgpDtlMain, .cntntsArea"));// 최상 부모 컨테이너
+
+            Element best = null;
+            int bestLen = 0;
+            for (Element e : candidates) {
+                if (e == null)
+                    continue;
+                int len = e.text().length();
+                if (len > bestLen) {
+                    best = e;
+                    bestLen = len;
+                }
+            }
+
+            if (best != null) {
+                return best.html(); // ✅ HTML 그대로 (태그 유지)
+            }
+
+            // 마지막 안전장치: 넓은 범위
+            Element main = doc.selectFirst("div#content, div.mainFrame, div.cntntsArea, div#wf_pgpDtlMain");
+            if (main != null)
+                return main.html();
+
+            return "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
 
     private static String text(JsonNode node, String... keys) {
         for (String k : keys) {

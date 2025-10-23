@@ -41,5 +41,6 @@
   "java.format.settings.url": "",
   "java.format.settings.profile": "",
   "java.format.enabled": true,
-  "java.saveActions.organizeImports": true
+  "java.saveActions.organizeImports": true,
+  "java.configuration.updateBuildConfiguration": "interactive"
 }

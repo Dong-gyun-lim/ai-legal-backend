@@ -10,8 +10,14 @@ spring:
     baseline-on-migrate: true
     enabled: false   # 기본은 꺼두고, prod 등에서 켜기
 
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher  # ✅ 한글 파라미터 처리 시 path 파싱 오류 방지
+
 server:
   port: 9090
+  tomcat:
+    uri-encoding: UTF-8                   # ✅ Tomcat이 URL 한글 파라미터를 UTF-8로 처리하도록 설정
 
 springdoc:
   swagger-ui:

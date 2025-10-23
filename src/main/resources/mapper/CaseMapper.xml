@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
   "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
 <mapper namespace="com.divorceai.mapper.CaseMapper">
@@ -7,8 +8,7 @@
   <insert id="upsertCase">
     INSERT INTO precedents (
       case_no, court, judgment_date, type, summary, source_url, full_text
-    )
-    VALUES (
+    ) VALUES (
       #{caseNo}, #{court}, #{judgedAt}, #{type}, #{summary}, #{url}, #{fullText}
     )
     ON DUPLICATE KEY UPDATE
@@ -17,7 +17,7 @@
       type          = VALUES(type),
       summary       = VALUES(summary),
       source_url    = VALUES(source_url),
-      full_text     = VALUES(full_text);
+      full_text     = VALUES(full_text)
   </insert>
 
 </mapper>
