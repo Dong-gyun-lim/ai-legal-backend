@@ -2,128 +2,113 @@ package com.divorceai.service;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
 
-// ✅ Jsoup (중요: java.lang.model.util.Elements 가 아니라 아래 3개!)
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
-import com.divorceai.crawl.JudicialCrawler;
 import com.divorceai.mapper.CaseMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+/**
+ * 🔹 Flask 연동 기반 크롤링 서비스
+ * - Spring은 목록 수집만 담당하고
+ * - 상세 본문은 Flask 서버에 요청하여 받아옴
+ * - 받아온 본문을 MariaDB에 저장
+ */
 @Service
 public class CrawlService {
 
-    private final JudicialCrawler crawler = new JudicialCrawler();
     private final CaseMapper caseMapper;
     private final ObjectMapper om = new ObjectMapper();
+    private final RestTemplate rest = new RestTemplate();
+
+    @Value("${flask.base-url}")
+    private String flaskBaseUrl; // e.g. http://127.0.0.1:5001
 
     public CrawlService(CaseMapper caseMapper) {
         this.caseMapper = caseMapper;
     }
 
+    /**
+     * 🔸 Flask 서버로 판례 상세 HTML 요청 → DB 저장
+     * 
+     * @param keyword  검색 키워드 (예: "이혼")
+     * @param page     페이지 번호 (기본 1)
+     * @param pageSize 한 페이지당 결과 수
+     */
     public int crawlOnce(String keyword, int page, int pageSize) throws Exception {
         System.out.println("🔎 [Crawl] keyword=" + keyword + ", page=" + page + ", size=" + pageSize);
 
-        String body = crawler.fetchListJson(keyword, page, pageSize);
-        if (body != null && !body.isBlank()) {
-            int b = Math.min(900, body.length());
-            System.out.println("🧾 [Crawl Raw Response]\n" + body.substring(0, b));
-        }
-        if (body == null || body.isBlank()) {
-            System.out.println("❌ [Crawl] list response empty");
+        // Flask 서버에 요청할 URL
+        String url = String.format("%s/crawl_list?keyword=%s&page=%d&size=%d",
+                flaskBaseUrl, keyword, page, pageSize);
+
+        ResponseEntity<String> res = rest.exchange(url, HttpMethod.GET, null, String.class);
+        if (res.getStatusCode() != HttpStatus.OK || res.getBody() == null) {
+            System.out.println("❌ [Flask] 목록 요청 실패: " + res.getStatusCode());
             return 0;
         }
 
-        JsonNode root = om.readTree(body);
-        JsonNode items = root.at("/data/dlt_jdcpctRslt");
+        JsonNode root = om.readTree(res.getBody());
+        JsonNode items = root.at("/data");
         if (items.isMissingNode() || !items.isArray()) {
-            System.out.println("❌ [Crawl] items not found");
+            System.out.println("❌ [Crawl] 목록 데이터 없음");
             return 0;
         }
-
-        System.out.println("📦 [Crawl] items size=" + items.size());
 
         int saved = 0;
-        for (JsonNode n : items) {
-            String caseNo = text(n, "csNoLstCtt");
-            String court = text(n, "cortNm");
-            String dateRaw = text(n, "prnjdgYmd");
-            String summary = clean(text(n, "jdcpctSumrCtt"));
-            String srno = text(n, "jisCntntsSrno"); // 상세페이지 키
-            String inst = text(n, "jisJdcpcInstnDvsCd"); // 기관 코드
-            String type = keyword;
-            String judgedAt = normalizeDate(dateRaw);
+        System.out.println("📦 [Crawl] items size=" + items.size());
 
-            String fullText = "";
-            if (!srno.isBlank()) {
-                System.out.printf("🔎 caseNo=%s srno=%s inst=%s | ", caseNo, srno, inst);
-                String detailHtml = crawler.fetchDetailHtml(srno, keyword);
-                fullText = extractMainHtml(detailHtml); // ✅ 상세페이지에서 본문 HTML 캡쳐
-                System.out.println("list.len=" + fullText.length());
-            }
+        for (JsonNode n : items) {
+            String caseNo = text(n, "case_no", "caseNo");
+            String court = text(n, "court");
+            String dateRaw = text(n, "judgment_date", "date");
+            String summary = clean(text(n, "summary"));
+            String srno = text(n, "srno");
+
+            String judgedAt = normalizeDate(dateRaw);
+            String type = keyword;
+            String urlDetail = flaskBaseUrl + "/crawl_detail?srno=" + srno + "&keyword=" + keyword;
 
             try {
-                saved += caseMapper.upsertCase(
-                        caseNo, court, judgedAt, type, summary, null /* source_url */,
-                        fullText // ✅ 전문 HTML
-                );
+                // Flask에 상세 요청 보내기
+                String html = fetchDetailFromFlask(srno, keyword);
+                if (html == null || html.isBlank()) {
+                    System.out.println("⛔ [Detail] empty for caseNo=" + caseNo);
+                    continue;
+                }
+
+                // DB 저장
+                saved += caseMapper.upsertCase(caseNo, court, judgedAt, type, summary, urlDetail, html);
+                System.out.println("💾 [Save] " + caseNo + " inserted.");
+
+                // 요청 간 지연 (차단 방지)
+                Thread.sleep(300 + (long) (Math.random() * 600));
+
             } catch (Exception ex) {
-                System.out.println("⚠️ [Crawl] upsert failed caseNo=" + caseNo + " -> " + ex.getMessage());
+                System.out.println("⚠️ [Detail] fetch failed srno=" + srno + " -> " + ex.getMessage());
             }
         }
 
-        System.out.println("💾 [Crawl] saved=" + saved);
+        System.out.println("✅ [Crawl Done] saved=" + saved);
         return saved;
     }
 
-    /** 상세 HTML 안에서 본문 영역만 뽑아오기 */
-    private static String extractMainHtml(String html) {
-        if (html == null || html.isBlank())
+    /** 🔹 Flask 서버에서 상세 본문 HTML 받아오기 */
+    private String fetchDetailFromFlask(String srno, String keyword) {
+        String url = String.format("%s/crawl_detail?srno=%s&keyword=%s", flaskBaseUrl, srno, keyword);
+        ResponseEntity<String> res = rest.exchange(url, HttpMethod.GET, null, String.class);
+        if (res.getStatusCode() != HttpStatus.OK || res.getBody() == null)
             return "";
-        try {
-            Document doc = Jsoup.parse(html);
-
-            // 후보 선택자들 (페이지 구조 변동 대비)
-            List<Element> candidates = new ArrayList<>();
-            candidates.add(doc.selectFirst("div#judgmentNote")); // 판시사항
-            candidates.add(doc.selectFirst("div#judgmentReason")); // 판결요지
-            candidates.add(doc.selectFirst("div#judgmentNote, div#txtview")); // 일반 텍스트 영역
-            candidates.add(doc.selectFirst("div.ctxCntnts, div.cntnts")); // 내부 컨텐츠
-            candidates.add(doc.selectFirst("div#wf_pgpDtlMain, .cntntsArea"));// 최상 부모 컨테이너
-
-            Element best = null;
-            int bestLen = 0;
-            for (Element e : candidates) {
-                if (e == null)
-                    continue;
-                int len = e.text().length();
-                if (len > bestLen) {
-                    best = e;
-                    bestLen = len;
-                }
-            }
-
-            if (best != null) {
-                return best.html(); // ✅ HTML 그대로 (태그 유지)
-            }
-
-            // 마지막 안전장치: 넓은 범위
-            Element main = doc.selectFirst("div#content, div.mainFrame, div.cntntsArea, div#wf_pgpDtlMain");
-            if (main != null)
-                return main.html();
-
-            return "";
-        } catch (Exception e) {
-            return "";
-        }
+        return res.getBody();
     }
 
+    /** 🔹 JSON 텍스트 추출 */
     private static String text(JsonNode node, String... keys) {
         for (String k : keys) {
             JsonNode v = node.get(k);
@@ -136,6 +121,7 @@ public class CrawlService {
         return "";
     }
 
+    /** 🔹 날짜 YYYY-MM-DD 변환 */
     private static String normalizeDate(String s) {
         if (s == null)
             return "";
@@ -144,10 +130,7 @@ public class CrawlService {
             return "";
         String digits = s.replaceAll("[^0-9]", "");
         if (digits.length() == 8) {
-            String y = digits.substring(0, 4);
-            String m = digits.substring(4, 6);
-            String d = digits.substring(6, 8);
-            return y + "-" + m + "-" + d;
+            return digits.substring(0, 4) + "-" + digits.substring(4, 6) + "-" + digits.substring(6, 8);
         }
         try {
             LocalDate.parse(s, DateTimeFormatter.ISO_LOCAL_DATE);
@@ -157,6 +140,7 @@ public class CrawlService {
         }
     }
 
+    /** 🔹 HTML 태그 제거 */
     private static String clean(String s) {
         if (s == null)
             return "";

@@ -1,4 +1,4 @@
-package com.divorceai.crawl.dto;
+package com.divorceai.domain;
 
 import java.util.List;
 

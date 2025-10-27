@@ -28,5 +28,6 @@ flask:
 crawler:
   keyword: "이혼"
   page-size: 20
-  max-pages: 3
-  delay-ms: 400
+  max-pages: 30    # 총 약 600건
+  delay-ms: 600    # 0.6초 대기
+
