@@ -42,5 +42,6 @@
   "java.format.settings.profile": "",
   "java.format.enabled": true,
   "java.saveActions.organizeImports": true,
-  "java.configuration.updateBuildConfiguration": "interactive"
+  "java.configuration.updateBuildConfiguration": "interactive",
+  "java.compile.nullAnalysis.mode": "automatic"
 }
