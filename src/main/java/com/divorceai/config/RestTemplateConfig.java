@@ -7,6 +7,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
+/**
+ * 🌐 Flask 서버와의 통신용 RestTemplate 설정
+ */
 @Configuration
 public class RestTemplateConfig {
 
@@ -18,12 +21,10 @@ public class RestTemplateConfig {
 
     @Bean
     public RestTemplate restTemplate(RestTemplateBuilder builder) {
-        // ✅ 타임아웃은 팩토리에 설정
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(timeoutMs);
         factory.setReadTimeout(timeoutMs);
 
-        // ✅ 빌더에서는 deprecated 메서드들 제거
         return builder
                 .rootUri(flaskBaseUrl)
                 .requestFactory(() -> factory)

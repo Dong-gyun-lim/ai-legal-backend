@@ -3,31 +3,29 @@ spring:
     driver-class-name: org.mariadb.jdbc.Driver
     url: jdbc:mariadb://203.231.146.220:3306/kiu202507?useSSL=false&useUnicode=true&characterEncoding=utf8&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
     username: kiu202507
-    password: 'kiu20250712#'
+    password: 'kiu20250712#'   # 특수문자(#) 포함이므로 작은따옴표 유지
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
       pool-name: Hikari-DivorceAI
-      # (선택) 커넥션 오래 살아있을 때 끊김 방지
-      max-lifetime: 1800000        # 30분
-      idle-timeout: 600000         # 10분
-      connection-timeout: 30000    # 30초
+      max-lifetime: 1800000      # 30분
+      idle-timeout: 600000       # 10분
+      connection-timeout: 30000  # 30초
 
   flyway:
-    enabled: false  # spring.flyway.enabled 형태로 spring 아래에 위치해야 함
+    enabled: false               # dev에서는 마이그레이션 비활성화
 
 logging:
   level:
-    com.divorceai: INFO
+    "com.divorceai": INFO        # 도트(.) 키는 따옴표로 감싸 경고 제거
 
-flask:
-  base-url: http://127.0.0.1:5001
-  timeout-ms: 5000
-
-# application-dev.yml
+# ⬇️ 커스텀 섹션(IDE가 Unknown property 경고를 줄 수 있으나 무방)
 crawler:
   keyword: "이혼"
   page-size: 20
-  max-pages: 30    # 총 약 600건
-  delay-ms: 600    # 0.6초 대기
+  max-pages: 30
+  delay-ms: 600
 
+flask:
+  base-url: http://127.0.0.1:5001
+  timeout-ms: 15000   # ⬅️ 15초로 늘리기

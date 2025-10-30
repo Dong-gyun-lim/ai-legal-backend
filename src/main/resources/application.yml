@@ -1,23 +1,23 @@
 spring:
   application:
     name: divorce-ai
+
   profiles:
-    active: dev
+    active: dev                  # 기본 활성 프로필
 
   flyway:
-    # 공통 경로/옵션만 두고, 켜고 끄는 건 각 프로필에서
     locations: classpath:db/migration
     baseline-on-migrate: true
-    enabled: false   # 기본은 꺼두고, prod 등에서 켜기
+    enabled: false               # 기본은 비활성(운영에서 켜기)
 
   mvc:
     pathmatch:
-      matching-strategy: ant_path_matcher  # ✅ 한글 파라미터 처리 시 path 파싱 오류 방지
+      matching-strategy: ant_path_matcher  # 경로 파싱 전략(부트3에선 기본 PathPatternParser, 필요 시 유지)
 
 server:
   port: 9090
   tomcat:
-    uri-encoding: UTF-8                   # ✅ Tomcat이 URL 한글 파라미터를 UTF-8로 처리하도록 설정
+    uri-encoding: UTF-8
 
 springdoc:
   swagger-ui:
@@ -25,11 +25,17 @@ springdoc:
 
 # MyBatis 공통 설정
 mybatis:
-  mapper-locations: classpath:mapper/*.xml
+  mapper-locations: classpath*:mapper/*.xml
   type-aliases-package: com.divorceai.domain
   configuration:
     map-underscore-to-camel-case: true
 
+# ⬇️ 커스텀: Flask 연결 정보 (RestTemplateConfig에서 사용)
 flask:
   base-url: http://127.0.0.1:5001
-  timeout-ms: 5000
+  timeout-ms: 15000   # ⬅️ 15초로 늘리기
+
+
+logging:
+  level:
+    "com.divorceai": INFO
