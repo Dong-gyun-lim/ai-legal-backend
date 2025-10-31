@@ -7,16 +7,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
-/**
- * 🌐 Flask 서버와의 통신용 RestTemplate 설정
- */
 @Configuration
 public class RestTemplateConfig {
 
     @Value("${flask.base-url:http://127.0.0.1:5001}")
     private String flaskBaseUrl;
 
-    @Value("${flask.timeout-ms:5000}")
+    @Value("${flask.timeout-ms:15000}")
     private int timeoutMs;
 
     @Bean

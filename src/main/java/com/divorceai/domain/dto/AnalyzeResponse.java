@@ -3,38 +3,72 @@ package com.divorceai.domain.dto;
 import java.util.List;
 
 import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 
-/**
- * 🤖 AI 분석 결과 DTO
- */
-@Data
-@Builder
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString
 public class AnalyzeResponse {
+    private Boolean ok; // true/false
+    private String error; // 에러 메시지(있으면)
+    private String answer; // LLM 요약 답변(한국어)
+    private Explanation explanation; // 왜 그런 결론인지
 
-    private boolean ok; // 성공 여부
-    private String error; // ⬅️ 오류 메시지(실패 시 세팅)
-    private String answer; // 요약 답변(LLM)
-    private String explanation; // 근거/해설 텍스트
-    private double similarity; // 평균 유사도(%)
-    private int damages; // 위자료(만원) - 초기 mock
-    private String custody; // 양육권 귀속 - 초기 mock
-    private List<ReferenceCase> references; // 근거 판례 목록
+    private Double similarity; // 평균 유사도(%)
+    private Integer damages; // 추정 위자료(만원)
+    private String custody; // 양육권 귀속
+    private List<ReferenceCase> references; // 근거 판례들
 
-    @Data
-    @Builder
+    @Getter
+    @Setter
     @NoArgsConstructor
     @AllArgsConstructor
+    @ToString
+    public static class Explanation {
+        private String reasoning; // 한 단락 설명
+        private List<Factor> factors; // 핵심 요인
+        private List<Highlight> highlights; // 하이라이트 스니펫
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @ToString
+    public static class Factor {
+        private String name;
+        private Double weight; // 0~1
+        private String evidence;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @ToString
+    public static class Highlight {
+        private String caseNo;
+        private Integer chunkIndex;
+        private String span;
+        private String tag;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @ToString
     public static class ReferenceCase {
-        private String caseNo; // 판례 번호
-        private String court; // 법원
-        private String judgmentDate; // 선고일
-        private int score; // 유사도(%)
-        private String sectionName; // 섹션명(이유/주문 등)
-        private String text; // 근거 텍스트
+        private String caseNo;
+        private String court;
+        private String judgmentDate;
+        private Integer score; // 0~100
+        private String sectionName; // (선택)
+        private String text; // (선택)
     }
 }
