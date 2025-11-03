@@ -1,11 +1,10 @@
 package com.divorceai.service;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -18,10 +17,7 @@ import org.springframework.web.client.RestTemplate;
 
 import com.divorceai.domain.dto.AnalyzeRequest;
 import com.divorceai.domain.dto.AnalyzeResponse;
-import com.divorceai.domain.dto.AnalyzeResponse.Explanation;
-import com.divorceai.domain.dto.AnalyzeResponse.Factor;
-import com.divorceai.domain.dto.AnalyzeResponse.Highlight;
-import com.divorceai.domain.dto.AnalyzeResponse.ReferenceCase;
+import com.divorceai.mapper.AnalyzeMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -32,169 +28,178 @@ import lombok.RequiredArgsConstructor;
 public class AnalysisService {
 
     private final RestTemplate restTemplate;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+    private final AnalyzeMapper analyzeMapper;
 
     @Value("${flask.base-url:http://127.0.0.1:5001}")
     private String flaskBaseUrl;
 
-    /** Spring → Flask /health 프록시 */
+    /**
+     * Flask /health 프록시 (ApiController에서 합쳐서 보여줌)
+     */
     public Map<String, Object> health() {
+        Map<String, Object> r = new HashMap<>();
         try {
+            String s = restTemplate.getForObject(flaskBaseUrl + "/health", String.class);
             @SuppressWarnings("unchecked")
-            Map<String, Object> res = restTemplate.getForObject(flaskBaseUrl + "/health", Map.class);
-            if (res == null)
-                res = new HashMap<>();
-            res.putIfAbsent("ok", true);
-            res.put("source", "flask");
-            return res;
+            Map<String, Object> m = objectMapper.readValue(s, Map.class);
+            r.put("ok", true);
+            r.putAll(m);
         } catch (Exception e) {
-            Map<String, Object> err = new HashMap<>();
-            err.put("ok", false);
-            err.put("error", "Flask health request failed: " + e.getMessage());
-            err.put("flaskBaseUrl", flaskBaseUrl);
-            return err;
+            r.put("ok", false);
+            r.put("error", "Flask health request failed: " + e.getMessage());
+            r.put("flaskBaseUrl", flaskBaseUrl);
         }
+        return r;
     }
 
-    /** Spring → Flask /rag 호출(권장 경로) */
+    /**
+     * 분석 실행: Flask /rag 호출 → DTO 매핑 → DB 저장(analysis_results)
+     */
     public AnalyzeResponse analyze(AnalyzeRequest req) {
-        AnalyzeResponse result = new AnalyzeResponse();
+        AnalyzeResponse out = new AnalyzeResponse();
         try {
-            String question = (req.getQuestion() != null && !req.getQuestion().isBlank())
-                    ? req.getQuestion()
-                    : buildQuestionFromStruct(req);
-
-            int topK = (req.getTopK() != null && req.getTopK() > 0) ? req.getTopK() : 3;
-
-            Map<String, Object> payload = Map.of("question", question, "top_k", topK);
+            // 1) Flask 호출 페이로드
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("question", buildQuestion(req));
+            payload.put("top_k", req.getTopK() != null ? req.getTopK() : 5);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<String> entity = new HttpEntity<>(objectMapper.writeValueAsString(payload), headers);
 
+            // 2) 호출
             ResponseEntity<String> resp = restTemplate.exchange(
                     flaskBaseUrl + "/rag", HttpMethod.POST, entity, String.class);
 
             if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
-                result.setOk(false);
-                result.setError("Flask 호출 실패: " + resp.getStatusCode());
-                return result;
+                out.setOk(false);
+                out.setError("Flask returned " + resp.getStatusCode());
+                return out;
             }
 
+            // 3) 응답 매핑
             JsonNode json = objectMapper.readTree(resp.getBody());
 
-            // 기본 필드
-            result.setOk(true);
-            result.setAnswer(json.path("answer").asText(""));
+            out.setOk(true);
+            out.setAnswer(json.path("answer").asText(""));
+            // 선택 수치들(없으면 기본값)
+            if (json.has("avg_similarity"))
+                out.setSimilarity(json.get("avg_similarity").asDouble(0));
+            if (json.has("damages"))
+                out.setDamages(json.get("damages").asInt(0));
+            if (json.has("custody"))
+                out.setCustody(json.get("custody").asText(""));
 
-            // explanation (reasoning + factors + highlights)
-            Explanation exp = new Explanation();
-            JsonNode expNode = json.path("explanation");
-            exp.setReasoning(expNode.path("reasoning").asText(""));
-            // factors
-            if (expNode.has("factors") && expNode.get("factors").isArray()) {
-                List<Factor> factors = new ArrayList<>();
-                for (JsonNode f : expNode.get("factors")) {
-                    Factor ff = new Factor(
-                            f.path("name").asText(""),
-                            f.path("weight").asDouble(0.0),
-                            f.path("evidence").asText(""));
-                    factors.add(ff);
-                }
-                exp.setFactors(factors);
-            } else {
-                exp.setFactors(Collections.emptyList());
-            }
-            // highlights
-            if (expNode.has("highlights") && expNode.get("highlights").isArray()) {
-                List<Highlight> highs = new ArrayList<>();
-                for (JsonNode h : expNode.get("highlights")) {
-                    Highlight hh = new Highlight(
-                            h.path("case_no").asText(null),
-                            h.hasNonNull("chunk_index") ? h.get("chunk_index").asInt() : null,
-                            h.path("span").asText(null),
-                            h.path("tag").asText(null));
-                    highs.add(hh);
-                }
-                exp.setHighlights(highs);
-            } else {
-                exp.setHighlights(Collections.emptyList());
-            }
-            result.setExplanation(exp);
-
-            // 평균 유사도(%)
-            double avg = 0.0;
-            if (json.has("scores") && json.get("scores").isArray() && json.get("scores").size() > 0) {
-                avg = json.get("scores")
-                        .findValuesAsText("") // not used
-                        .isEmpty()
-                                ? averageFromArray(json.get("scores"))
-                                : averageFromArray(json.get("scores"));
-            }
-            result.setSimilarity(Math.round(avg * 100.0) / 100.0);
-
-            // (임시) 위자료/양육권 — 나중에 Flask가 계산해서 내려주면 그대로 매핑
-            result.setDamages(1800);
-            result.setCustody("모(母)");
-
-            // 근거 판례
-            List<ReferenceCase> refs = new ArrayList<>();
+            // references
+            // references
             if (json.has("references") && json.get("references").isArray()) {
-                for (JsonNode r : json.get("references")) {
-                    ReferenceCase rc = new ReferenceCase(
-                            r.path("case_no").asText(null),
-                            r.path("court").asText(null),
-                            r.path("judgment_date").asText(null),
-                            (int) Math.round(r.path("score").asDouble(0.0)),
-                            r.path("section_name").asText(null),
-                            r.path("text").asText(null));
+                List<AnalyzeResponse.ReferenceCase> refs = new ArrayList<>();
+                for (JsonNode n : json.get("references")) {
+                    AnalyzeResponse.ReferenceCase rc = new AnalyzeResponse.ReferenceCase();
+                    rc.setCaseNo(n.path("case_no").asText(null));
+                    rc.setCourt(n.path("court").asText(null));
+                    rc.setJudgmentDate(n.path("judgment_date").asText(null));
+
+                    int score = 0;
+                    if (n.has("score")) {
+                        if (n.get("score").isNumber()) {
+                            double val = n.get("score").asDouble();
+                            score = (val <= 1.0) ? (int) Math.round(val * 100)
+                                    : (int) Math.round(val);
+                        }
+                    }
+                    rc.setScore(score);
+
+                    rc.setSectionName(n.path("section_name").asText(null));
+                    rc.setText(n.path("text").asText(null));
                     refs.add(rc);
                 }
+                out.setReferences(refs);
             }
-            result.setReferences(refs);
 
-            return result;
+            // explanation
+            if (json.has("explanation")) {
+                AnalyzeResponse.Explanation exp = new AnalyzeResponse.Explanation();
+                JsonNode expNode = json.get("explanation");
+                exp.setReasoning(expNode.path("reasoning").asText(""));
+                // factors
+                if (expNode.has("factors") && expNode.get("factors").isArray()) {
+                    List<AnalyzeResponse.Factor> fs = new ArrayList<>();
+                    for (JsonNode f : expNode.get("factors")) {
+                        fs.add(new AnalyzeResponse.Factor(
+                                f.path("name").asText(""),
+                                f.path("weight").asDouble(0),
+                                f.path("evidence").asText("")));
+                    }
+                    exp.setFactors(fs);
+                }
+                // highlights
+                if (expNode.has("highlights") && expNode.get("highlights").isArray()) {
+                    List<AnalyzeResponse.Highlight> hs = new ArrayList<>();
+                    for (JsonNode h : expNode.get("highlights")) {
+                        hs.add(new AnalyzeResponse.Highlight(
+                                h.path("case_no").asText(null),
+                                h.path("chunk_index").asInt(-1),
+                                h.path("span").asText(""),
+                                h.path("tag").asText("")));
+                    }
+                    exp.setHighlights(hs);
+                }
+                out.setExplanation(exp);
+            }
 
+            // 4) DB 저장 (analysis_results 스키마에 맞춰)
+            // user_id / is_guest / intake_json / similarity / damages / custody /
+            // ai_summary / case_list_json
+            String userId = req.getUserEmail(); // 로그인 이메일(없으면 null)
+            boolean isGuest = (userId == null || userId.isBlank());
+
+            Map<String, Object> intakeMap = new LinkedHashMap<>();
+            // 정형 입력 요약을 intake_json으로 남김 (필요한 것만)
+            intakeMap.put("gender", req.getGender());
+            intakeMap.put("age", req.getAge());
+            intakeMap.put("marriageYears", req.getMarriageYears());
+            intakeMap.put("childCount", req.getChildCount());
+            intakeMap.put("caseTypes", req.getCaseTypes());
+            intakeMap.put("role", req.getRole());
+            intakeMap.put("mainCauses", req.getMainCauses());
+
+            Long id = analyzeMapper.insertAnalysisResult(
+                    userId,
+                    isGuest,
+                    objectMapper.writeValueAsString(intakeMap),
+                    out.getSimilarity() == null ? null : out.getSimilarity().intValue(),
+                    out.getDamages(),
+                    out.getCustody(),
+                    out.getAnswer(),
+                    objectMapper.writeValueAsString(out.getReferences() == null ? List.of() : out.getReferences()));
+            // id가 필요하면 out에 추가 필드 만들어 넣어도 됨.
+
+            return out;
         } catch (Exception e) {
-            e.printStackTrace();
-            result.setOk(false);
-            result.setError("AI 분석 중 오류: " + e.getMessage());
-            return result;
+            out.setOk(false);
+            out.setError(e.getMessage());
+            return out;
         }
     }
 
-    private static double averageFromArray(JsonNode arr) {
-        double sum = 0.0;
-        int n = 0;
-        for (JsonNode v : arr) {
-            sum += v.asDouble(0.0);
-            n++;
-        }
-        return n == 0 ? 0.0 : sum / n;
-    }
-
-    /** summary 없을 때 정형 데이터로 질문 자동 생성 */
-    private String buildQuestionFromStruct(AnalyzeRequest req) {
-        // 사용자가 입력한 구조화 값으로 간결 질문 생성
+    /** 자유질문 없을 때 정형입력으로 간단 질문 생성 */
+    private String buildQuestion(AnalyzeRequest r) {
+        if (r.getQuestion() != null && !r.getQuestion().isBlank())
+            return r.getQuestion();
         List<String> parts = new ArrayList<>();
-        if (req.getGender() != null)
-            parts.add("성별 " + req.getGender());
-        if (req.getAge() != null)
-            parts.add("나이 " + req.getAge() + "세");
-        if (req.getMarriageYears() != null)
-            parts.add("혼인 " + req.getMarriageYears() + "년");
-        if (req.getChildCount() != null)
-            parts.add("자녀 " + req.getChildCount() + "명");
-        if (req.getMainCauses() != null && !req.getMainCauses().isEmpty())
-            parts.add("주요 사유: " + String.join(", ", req.getMainCauses()));
-        List<String> claims = new ArrayList<>();
-        if (Boolean.TRUE.equals(req.getHasAlimonyClaim()))
-            claims.add("위자료");
-        if (Boolean.TRUE.equals(req.getHasCustodyClaim()))
-            claims.add("양육권");
-        if (!claims.isEmpty())
-            parts.add("청구: " + claims.stream().collect(Collectors.joining(" ")));
-        String base = String.join(", ", parts);
-        return (base.isBlank() ? "이혼 분쟁" : base) + " 상황에서 유사 판례와 판단 기준을 알려주세요.";
+        if (r.getGender() != null)
+            parts.add("성별=" + r.getGender());
+        if (r.getAge() != null)
+            parts.add("나이=" + r.getAge());
+        if (r.getMarriageYears() != null)
+            parts.add("혼인기간=" + r.getMarriageYears() + "년");
+        if (r.getChildCount() != null)
+            parts.add("자녀=" + r.getChildCount());
+        if (r.getMainCauses() != null && !r.getMainCauses().isEmpty())
+            parts.add("사유=" + String.join(",", r.getMainCauses()));
+        String base = String.join(" | ", parts);
+        return "다음 사건 정보를 바탕으로 위자료/양육/재산분할 경향을 요약해줘.\n" + base;
     }
 }

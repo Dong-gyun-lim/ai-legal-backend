@@ -7,9 +7,13 @@ import java.util.Map;
 import org.springframework.core.env.Environment;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.divorceai.domain.dto.AnalyzeRequest;
+import com.divorceai.domain.dto.AnalyzeResponse;
 import com.divorceai.service.AnalysisService;
 
 import lombok.RequiredArgsConstructor;
@@ -31,11 +35,16 @@ public class ApiController {
         res.put("service", "divorce-ai");
         res.put("profile", String.join(",", env.getActiveProfiles()));
         res.put("time", OffsetDateTime.now().toString());
-
-        // Flask 상태 합치기 (AnalysisService.health()가 내부에서 /health 프록시 호출)
-        Map<String, Object> flask = analysisService.health();
-        res.put("flask", flask);
-
+        res.put("flask", analysisService.health());
         return ResponseEntity.ok(res);
+    }
+
+    /** POST /api/analyze : 분석 실행 */
+    @PostMapping("/analyze")
+    public ResponseEntity<AnalyzeResponse> analyze(@RequestBody AnalyzeRequest req) {
+        AnalyzeResponse result = analysisService.analyze(req);
+        if (Boolean.TRUE.equals(result.getOk()))
+            return ResponseEntity.ok(result);
+        return ResponseEntity.internalServerError().body(result);
     }
 }
